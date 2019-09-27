@@ -118,7 +118,7 @@ namespace AmpGen
               pb.print( double(list.size()) / double(N), " ε[gen] = " + mysprintf("%.4f",efficiency) + "% , " + std::to_string(int(time/1000.))  + " seconds" );
               if ( list.size() == previousSize ) {
                 ERROR( "No events generated, PDF: " << typeof<PDF>() << " is likely to be malformed" );
-                break;
+                //break;
               }
 //              maxProb = 0;
             } 

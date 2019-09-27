@@ -125,6 +125,7 @@ DEFINE_LINESHAPE(GenericKmatrix)
     return F_0;
   }
   else if(pa_type==PA_TYPE::QVec){
+    INFO("Using Q-vector approach to build the production amplitude");
     Expression M;
     for(unsigned i = 0 ; i < nChannels; ++i) M = M + kMatrix[{i,0}] * propagator[{0,i}];
     return M ; // * phsps[0];
