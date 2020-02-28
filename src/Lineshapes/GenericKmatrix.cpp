@@ -4,6 +4,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <exception>
 
 #include "AmpGen/Expression.h"
 #include "AmpGen/Factory.h"
@@ -20,6 +21,8 @@
 using namespace AmpGen;
 using namespace AmpGen::fcn;
 
+enum PA_TYPE {PVec, QVec};
+
 DEFINE_LINESHAPE(GenericKmatrix)
 {
   auto props        = ParticlePropertiesList::get( particleName );
@@ -27,8 +30,9 @@ DEFINE_LINESHAPE(GenericKmatrix)
   INFO( "kMatrix modifier " << lineshapeModifier << " particle = " << particleName );
   auto tokens = split(lineshapeModifier, '.' );
   DEBUG("kMatrix modifier = " << lineshapeModifier << " nTokens = " << tokens.size() );
-  unsigned nPoles  = NamedParameter<unsigned>(lineshapeModifier+"::"+particleName+"::kMatrix::nPoles");
-  auto channels    = NamedParameter<std::string>(lineshapeModifier+"::"+particleName+"::kMatrix::channels").getVector();
+  unsigned nPoles          = NamedParameter<unsigned>(lineshapeModifier+"::"+particleName+"::kMatrix::nPoles");
+  auto channels            = NamedParameter<std::string>(lineshapeModifier+"::"+particleName+"::kMatrix::channels").getVector();
+  auto const prod_amp_type = static_cast<PA_TYPE>(NamedParameter<int>(lineshapeModifier+"::"+particleName+"::kMatrix::production_amplitude",0).getVal());//PVec by default
   unsigned nChannels = channels.size();
   std::vector<Expression> phsps;
   std::vector<Expression> bw_phase_space;
@@ -49,29 +53,28 @@ DEFINE_LINESHAPE(GenericKmatrix)
   for (unsigned pole = 1; pole <= nPoles; ++pole ){
     std::string stub = lineshapeModifier+"::"+particleName+"::pole::" + std::to_string(pole);
     Expression mass  = Parameter(stub + "::mass");
-    INFO( "Will link to parameter: " << stub + "::mass");
+    DEBUG( "Will link to parameter: " << stub + "::mass");
     poleConfig thisPole(mass*mass);
     if( dbexpressions != nullptr ) dbexpressions->emplace_back(stub+"::mass", mass);
     Expression bw_width  = 0;
     Expression bw_width0 = 0;
-    for (unsigned channel = 1; channel <= nChannels; ++channel )
-    {
+    for (unsigned channel = 1; channel <= nChannels; ++channel ){
       Expression g = Parameter(stub+"::g::"+std::to_string(channel));
-      INFO("Will link to parameter: " << stub+"::g::"+std::to_string(channel) );
+      DEBUG("Will link to parameter: " << stub+"::g::"+std::to_string(channel) );
       thisPole.add(g, 1);
-      if( dbexpressions != nullptr ){
-        dbexpressions->emplace_back( stub+"::g::"+std::to_string(channel), g);
-      }
+      if(dbexpressions != nullptr) dbexpressions->emplace_back( stub+"::g::"+std::to_string(channel), g);
       bw_width  = bw_width  + g*g*phsps[channel-1] / mass;
       bw_width0 = bw_width0 + g*g*bw_phase_space[channel-1] / mass;
     }
-    for( unsigned channel = 1 ; channel <= nChannels; ++channel ){
-      Expression g = Parameter(stub+"::g::"+std::to_string(channel));
-      Expression BR = g*g*bw_phase_space[channel-1] / ( mass * bw_width0 );
-      ADD_DEBUG( BR, dbexpressions );
+    if( dbexpressions != nullptr ){
+      for( unsigned channel = 1 ; channel <= nChannels; ++channel ){
+        Expression g = Parameter(stub+"::g::"+std::to_string(channel));
+        Expression BR = g*g*bw_phase_space[channel-1] / ( mass * bw_width0 );
+        ADD_DEBUG( BR, dbexpressions );
+      }
+      ADD_DEBUG(bw_width, dbexpressions);
+      ADD_DEBUG(bw_width0, dbexpressions);
     }
-     ADD_DEBUG(bw_width, dbexpressions);
-     ADD_DEBUG(bw_width0, dbexpressions);
     poleConfigs.push_back(thisPole);
   }
   for(unsigned ch1 = 1; ch1 <= nChannels; ++ch1){
@@ -92,12 +95,36 @@ DEFINE_LINESHAPE(GenericKmatrix)
   }
   Tensor kMatrix = constructKMatrix(s, nChannels, poleConfigs);
 
-  ADD_DEBUG_TENSOR(kMatrix   , dbexpressions);
+  ADD_DEBUG_TENSOR(kMatrix, dbexpressions);
   kMatrix = kMatrix + non_resonant;
 
   Tensor propagator = getPropagator(kMatrix, phsps);
   ADD_DEBUG_TENSOR(non_resonant, dbexpressions);
-  Expression M;
-  for(unsigned i = 0 ; i < nChannels; ++i) M = M + kMatrix[{i,0}] * propagator[{0,i}];
-  return M ; // * phsps[0];
+
+  //we have all ingredients to build the production amplitude now
+  //follow http://pdg.lbl.gov/2019/reviews/rpp2019-rev-resonances.pdf eqns (48.34), (48.25)
+  if(prod_amp_type==PA_TYPE::PVec){
+    Expression A_0;//the object we'll return later: the amplitude in the 0th channel
+    for(unsigned channel = 0 ; channel < nChannels; ++channel) {
+      Expression P_c = 0;
+      for (unsigned pole = 1; pole <= nPoles; ++pole ){
+        auto const stub = lineshapeModifier+"::"+particleName+"::pole::" + std::to_string(pole);
+        //couplings of production amplitude to Kmatrix
+        Expression alpha = Parameter(stub+"::alpha::"+std::to_string(channel+1));
+        //sum P-vector over all poles (sum_R in (48.34))
+        P_c = P_c + (alpha * poleConfigs[pole-1].couplings[channel])/(poleConfigs[pole-1].s - s);
+      }
+      //background for production amplitude (real number, different from the one in the Kmatrix)
+      P_c = P_c + Parameter(lineshapeModifier+"::"+particleName+"::B::"+std::to_string(channel+1));
+      A_0 = A_0 + (propagator[{0,channel}] * P_c);
+    }
+    //TODO: implement n_0 (defined just below (48.19))
+    return A_0;
+  }
+  else if(prod_amp_type==PA_TYPE::QVec){
+    Expression M;
+    for(unsigned i = 0 ; i < nChannels; ++i) M = M + kMatrix[{i,0}] * propagator[{0,i}];
+    return M ; // * phsps[0];
+  }
+  else throw std::runtime_error("This shouldn't happen. Currently supported types: P-vector approach (PA_TYPE::PVec==0) and Q-vector approach (PA_TYPE::QVec==1)");
 }
