@@ -116,41 +116,10 @@ bool Minimiser::doFit()
       param->setResult( *param, param->err(), low, high  );
     }
   }
-  infomsg(TString::Format("%-2s %-60s  %-11s %-11s %-11s","#","parametername","value","error high","error low"));
-  for( unsigned i = 0 ; i != m_nParams; ++i ){
-    auto const param = m_parSet->at( m_mapping[i] );
-    //INFO( param->name() << " " << param->mean() << " " << param->errPos() << " " << param->errNeg() );
-    infomsg(TString::Format("%-2u %-60s  %11.5g %11.5g %11.5g",i,param->name().data(),param->mean(),param->errPos(),param->errNeg()));
-  }
 
-  infomsg(std::string(128, '*'));
-  infomsg(TString::Format("%-127s","* Correlation matrix: "));
-  infomsg(std::string(128, '*'));
+  if(NamedParameter<bool>("Minimiser::PrintResults",true))
+    print_parameters_and_covariance();
 
-  for (int i = -2; i != static_cast<int>(m_nParams); ++i ) {
-    TString line = "";
-    for(int j = -1; j != static_cast<int>(m_nParams); j++){
-      if(i == -2 && j == -1) line += "par # |";
-      else if (i == -2) line += TString::Format("   %-4d",j+1);
-      else if(i == -1 && j == -1) line += "______|";
-      else if(j == -1) line += TString::Format("%-6d|",i+1);
-      else if(i == -1) line += "_______";
-      else{
-        auto const current_corr = m_minimiser->Correlation(m_mapping[i],m_mapping[j]);
-        if(current_corr > 0.2 && current_corr < 0.5)line += TString::Format(" \033[1;33m%-+.3f\033[0m",current_corr);
-        else if(current_corr > 0.5 && current_corr < 1.f)line += TString::Format(" \033[1;31m%-+.3f\033[0m",current_corr);
-        else if(current_corr < -0.2 && current_corr > -0.5)line += TString::Format(" \033[1;34m%-+.3f\033[0m",current_corr);
-        else if(current_corr < -0.5)line += TString::Format(" \033[1;35m%-+.3f\033[0m",current_corr);
-        else line += TString::Format(" %-+.3f",current_corr);
-      }
-    }
-    infomsg(line);
-  }
-  infomsg("One more time for copying into the options file");
-  for( unsigned i = 0 ; i != m_nParams; ++i ){
-    auto const param = m_parSet->at( m_mapping[i] );
-    infomsg(TString::Format("%-60s  0 %-11.2g %-11.2g",param->name().data(),param->mean(),param->errPos()));
-  }
   return 1;
 }
 
@@ -200,3 +169,42 @@ void Minimiser::addExtendedTerm( IExtendLikelihood* m_term )
 }
 
 ROOT::Minuit2::Minuit2Minimizer* Minimiser::minimiserInternal() { return m_minimiser; }
+
+void Minimiser::print_parameters_and_covariance() const {
+  //print results from floating fitparameters
+  INFO(TString::Format("%-2s %-60s  %-11s %-11s %-11s","#","parametername","value","error high","error low"));
+  for( unsigned i = 0 ; i != m_nParams; ++i ){
+    auto const param = m_parSet->at( m_mapping[i] );
+    //printing the parameter-number allows to identify the parameter in the covariance matrix
+    INFO(TString::Format("%-2u %-60s  %11.5g %11.5g %11.5g",i,param->name().data(),param->mean(),param->errPos(),param->errNeg()));
+  }
+
+  INFO(std::string(128, '*'));
+  INFO(TString::Format("%-127s","* Correlation matrix: "));
+  INFO(std::string(128, '*'));
+
+  for (int i = -2; i < static_cast<int>(m_nParams); ++i ) {
+    TString line = "";
+    for(int j = -1; j < static_cast<int>(m_nParams); j++){
+      if(i == -2 && j == -1) line += "par # |";
+      else if (i == -2) line += TString::Format("   %-4d",j);
+      else if(i == -1 && j == -1) line += "______|";
+      else if(j == -1) line += TString::Format("%-6d|",i);
+      else if(i == -1) line += "_______";
+      else{
+        auto const current_corr = m_minimiser->Correlation(m_mapping[i],m_mapping[j]);
+        if(current_corr > 0.2 && current_corr < 0.5)line += TString::Format(" \033[1;33m%-+.3f\033[0m",current_corr);
+        else if(current_corr > 0.5 && current_corr < 1.f)line += TString::Format(" \033[1;31m%-+.3f\033[0m",current_corr);
+        else if(current_corr < -0.2 && current_corr > -0.5)line += TString::Format(" \033[1;34m%-+.3f\033[0m",current_corr);
+        else if(current_corr < -0.5)line += TString::Format(" \033[1;35m%-+.3f\033[0m",current_corr);
+        else line += TString::Format(" %-+.3f",current_corr);
+      }
+    }
+    INFO(line);
+  }
+
+  INFO("One more time for copying into the options file");
+  for(auto const& p_idx : m_mapping)
+    INFO(TString::Format("%-60s  0 %-11.5g %-11.5g",m_parSet->at(p_idx)->name().data(),m_parSet->at(p_idx)->mean(),m_parSet->at(p_idx)->errPos()));
+
+}

@@ -93,11 +93,7 @@ namespace AmpGen
     bool     m_normalise  = {false};
     std::vector<int> m_minosParams;
     std::vector<IExtendLikelihood*> m_extendedTerms;
-    template<typename S> using EnableIfstringConvertible = typename std::enable_if<std::is_convertible<S,TString>::value, void>::type*;
-    template <typename STR = TString>
-    inline void infomsg(STR&& input, EnableIfstringConvertible<STR> = nullptr) const {
-      std::printf("\033[0;36m%-20.20s \033[1;37m%-8.8s\033[0m %s\n","Minimiser","INFO:",static_cast<TString>(input).Data());
-    }
+    void print_parameters_and_covariance() const;
   };
 } // namespace AmpGen
 #endif
