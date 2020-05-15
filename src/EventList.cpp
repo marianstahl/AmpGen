@@ -30,16 +30,16 @@
 #include "AmpGen/ProfileClock.h"
 using namespace AmpGen;
 
-EventList::EventList( const EventType& type ) : m_eventType( type ) {} 
+EventList::EventList( const EventType& type ) : m_eventType( type ) {}
 
 void EventList::loadFromFile( const std::string& fname, const ArgumentPack& args )
 {
-  auto current_file = gFile; 
-  auto tokens = split( fname, ':'); 
+  auto current_file = gFile;
+  auto tokens = split( fname, ':');
   TTree* tree = nullptr;
-  if( fname == "" ) FATAL("Filename must be specified to load data"); 
+  if( fname == "" ) FATAL("Filename must be specified to load data");
   if( tokens.size() == 2 ){
-    gFile = TFile::Open( tokens[0].c_str(), "READ"); 
+    gFile = TFile::Open( tokens[0].c_str(), "READ");
     if( gFile == nullptr ) FATAL("Failed to load file: " << tokens[0] );
     tree = (TTree*)gFile->Get( tokens[1].c_str() );
   }
@@ -51,28 +51,28 @@ void EventList::loadFromFile( const std::string& fname, const ArgumentPack& args
   if( tree == nullptr ) FATAL( "Failed to load tree from file: " << fname );
   loadFromTree( tree, args );
   gFile->Close();
-  gFile = current_file; 
+  gFile = current_file;
 }
 
 void EventList::loadFromTree( TTree* tree, const ArgumentPack& args )
 {
-  ProfileClock read_time; 
+  ProfileClock read_time;
   if( m_eventType.size() == 0 ){
     auto tokens = split( tree->GetTitle(), ' ');
-    if( tokens.size() != 1 ) m_eventType = EventType( tokens ); 
+    if( tokens.size() != 1 ) m_eventType = EventType( tokens );
     INFO("Attempted automatic deduction of eventType: " << m_eventType );
-  } 
+  }
   auto pdfSize      = args.getArg<CacheSize>(0).val;
   auto filter       = args.getArg<Filter>(std::string("")).val;
   auto getGenPdf    = args.getArg<GetGenPdf>(false).val;
   auto weightBranch = args.getArg<WeightBranch>(std::string("")).val;
   auto branches     = args.getArg<Branches>().val;
   auto applySym     = args.getArg<ApplySym>(false).val;
-  auto entryList    = args.getArg<EntryList>().val; 
+  auto entryList    = args.getArg<EntryList>().val;
   auto eventFormat  = m_eventType.getEventFormat( true );
 
   Event temp( branches.size() == 0 ? eventFormat.size() : branches.size() , pdfSize );
-  temp.setWeight( 1 );
+  //temp.setWeight( 1 );
   temp.setGenPdf( 1 );
   tree->SetBranchStatus( "*", 0 );
 
@@ -84,7 +84,7 @@ void EventList::loadFromTree( TTree* tree, const ArgumentPack& args )
       tr.setBranch( *branch, &(temp[pos]) );
       if( pos >= eventFormat.size() ){
         INFO("Specifiying event extension: " << *branch << " " << pos << " " << eventFormat.size() );
-        m_extensions[ *branch ] = pos; 
+        m_extensions[ *branch ] = pos;
       }
     }
   }
@@ -94,7 +94,10 @@ void EventList::loadFromTree( TTree* tree, const ArgumentPack& args )
     }
   }
   if( getGenPdf )          tr.setBranch( "genPdf",     temp.pGenPdf() );
-  if( weightBranch != "" ) tr.setBranch( weightBranch, temp.pWeight() );
+  if( weightBranch != "" ){
+    INFO("Setting weight branch: " << weightBranch);
+    tr.setBranch( weightBranch, temp.pWeight() );
+  }
   if( filter != "" ){
     if( entryList.size() != 0 ){
       WARNING("Specified entry list and filter, will overwrite list with specified selection");
@@ -102,7 +105,7 @@ void EventList::loadFromTree( TTree* tree, const ArgumentPack& args )
     tr.prepare();
     tree->Draw(">>evtList", filter.c_str() );
     TEventList* evtList = (TEventList*)gDirectory->Get("evtList");
-    for( int i = 0 ; i < evtList->GetN(); ++i ) 
+    for( int i = 0 ; i < evtList->GetN(); ++i )
       entryList.push_back( evtList->GetEntry(i) );
   }
   bool hasEventList    = entryList.size() != 0;
@@ -121,7 +124,7 @@ void EventList::loadFromTree( TTree* tree, const ArgumentPack& args )
 TTree* EventList::tree( const std::string& name, const std::vector<std::string>& extraBranches )
 {
   std::string title = m_eventType.mother();
-  for( unsigned i = 0 ; i != m_eventType.size(); ++i ) title += " " + m_eventType[i]; 
+  for( unsigned i = 0 ; i != m_eventType.size(); ++i ) title += " " + m_eventType[i];
   TTree* outputTree = new TTree( name.c_str(), title.c_str() );
   if ( size() == 0 ) {
     ERROR( "Trying to output empty tree" );
@@ -131,13 +134,13 @@ TTree* EventList::tree( const std::string& name, const std::vector<std::string>&
   double genPdf = 1;
   double weight = 1;
   auto format = m_eventType.getEventFormat( true );
-  
+
   for ( auto& f : format ){
     outputTree->Branch( f.first.c_str(), tmp.address( f.second ) );
   }
   for ( auto& f : m_extensions ){
     outputTree->Branch( f.first.c_str(), tmp.address( f.second ) );
-  } 
+  }
   outputTree->Branch( "genPdf", &genPdf );
   outputTree->Branch( "weight", &weight );
   for ( auto& evt : *this ) {
@@ -160,13 +163,13 @@ std::vector<TH1D*> EventList::makeProjections( const std::vector<Projection>& pr
   return plots;
 }
 
-TH1D* EventList::makeProjection( const Projection& projection, const ArgumentPack& args ) const 
+TH1D* EventList::makeProjection( const Projection& projection, const ArgumentPack& args ) const
 {
   auto selection      = args.getArg<Selection>().val;
   auto weightFunction = args.getArg<WeightFunction>().val;
   std::string prefix  = args.getArg<Prefix>(std::string(""));
   auto plot = projection.plot(prefix);
-  plot->SetLineColor(args.getArg<LineColor>(kBlack).val); 
+  plot->SetLineColor(args.getArg<LineColor>(kBlack).val);
   plot->SetMarkerSize(0);
   for( auto& evt : m_data ){
     if( selection != nullptr && !selection(evt) ) continue;
@@ -254,19 +257,19 @@ double EventList::norm()
   return m_norm;
 }
 
-void EventList::clear() 
-{ 
-  m_data.clear(); 
+void EventList::clear()
+{
+  m_data.clear();
 }
 
-void EventList::erase(const std::vector<Event>::iterator& begin, 
+void EventList::erase(const std::vector<Event>::iterator& begin,
                       const std::vector<Event>::iterator& end)
 {
   m_data.erase( begin, end );
 }
 
 void EventList::reserveCache(const size_t& size)
-{ 
+{
   if ( size >= at(0).cacheSize() )
     for (auto& evt : *this) evt.resizeCache(evt.cacheSize() + size);
 }
@@ -275,4 +278,3 @@ void EventList::resizeCache(const size_t& newCacheSize )
 {
   for (auto& evt : *this) evt.resizeCache( newCacheSize );
 }
-
