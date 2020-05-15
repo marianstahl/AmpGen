@@ -35,6 +35,11 @@ else()
     set(AMPGEN_ERROR_REASON "${AMPGEN_ERROR_REASON} Directory '${AMPGEN_INCLUDE_DIR}' does not exist.")
   endif()
 
+  if("${AMPGEN_CXX}" STREQUAL "")
+    message(STATUS "AMPGEN_CXX is empty. Setting it to ${CMAKE_CXX_COMPILER}")
+    set(AMPGEN_CXX ${CMAKE_CXX_COMPILER})
+  endif()
+
   if(NOT ROOT_FOUND)
     message(WARNING "ROOT not found. Trying to find it from here...")
     find_package(ROOT CONFIG REQUIRED COMPONENTS Matrix MathMore MathCore Gpad Tree Graf)
