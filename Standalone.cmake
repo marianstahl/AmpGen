@@ -12,7 +12,9 @@ if( NOT "${CMAKE_CXX_STANDARD}" )
   set(CMAKE_CXX_STANDARD 17) 
 endif() 
 
-SET(USE_OPENMP TRUE CACHE BOOL "USE_OPENMP")
+SET(USE_OPENMP TRUE    CACHE BOOL   "USE_OPENMP") # flag to use openmp for threading 
+SET(USE_SIMD   "AVX2d" CACHE STRING "USE_SIMD")   # AVX instruction set + precision to use 
+SET(USE_MVEC   TRUE    CACHE BOOL   "USE_MVEC")   # flag to use vector math library mvec 
 
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -29,6 +31,7 @@ include(GNUInstallDirs)
 
 option(AMPGEN_DEBUG "AmpGen Debug printout")
 option(AMPGEN_TRACE "AmpGen Trace printout")
+
 
 configure_file ("${PROJECT_SOURCE_DIR}/AmpGen/Version.h.in" "${CMAKE_BINARY_DIR}/AmpGenVersion.h")
 
@@ -63,7 +66,19 @@ target_include_directories(AmpGen PUBLIC $<BUILD_INTERFACE:${${PROJECT_NAME}_SOU
 
 target_include_directories(AmpGen SYSTEM PUBLIC "${ROOT_INCLUDE_DIRS}")
 
-target_link_libraries(AmpGen PUBLIC ${ROOT_LIBRARIES} ${CMAKE_DL_LIBS})
+target_link_libraries(AmpGen PUBLIC -lm ${ROOT_LIBRARIES} ${CMAKE_DL_LIBS} )
+
+find_library(libmvec mvec)
+
+if ( USE_MVEC AND libmvec  )
+  message( STATUS "Using libmvec for vectorised math operations")
+  target_link_libraries(AmpGen PUBLIC mvec)
+  target_compile_definitions(AmpGen PUBLIC "USE_MVEC=1") 
+else()
+  message( STATUS "Warning: libmvec not found, with use scalar math where necessary.")
+  target_compile_definitions(AmpGen PUBLIC "USE_MVEC=0") 
+endif()
+
 
 
 if( ( NOT TARGET ROOT::Minuit2 AND NOT TARGET Minuit2 ) OR "${extern_minuit2}" )
@@ -103,6 +118,23 @@ if( USE_OPENMP )
   endif()
 endif()
 
+set(RAPIDSIM_DATA "")
+
+if( "${USE_RAPIDSIM}" ) 
+  include(${CMAKE_ROOT}/Modules/FetchContent.cmake) 
+  FetchContent_Declare( RapidSim GIT_REPOSITORY https://github.com/gcowan/RapidSim/ )
+  if(NOT RapidSim_POPULATED)
+    message("Fetching RapidSim from: https://github.com/gcowan/RapidSim/")
+    FetchContent_Populate(RapidSim)
+  endif()
+  FetchContent_GetProperties(RapidSim)
+  set(RAPIDSIM_DATA "${CMAKE_BINARY_DIR}/_deps/rapidsim-src/rootfiles/" )
+endif()
+
+if( RAPIDSIM_DATA )
+  message("Set RAPIDSIM_DATA = ${RAPIDSIM_DATA}")
+endif()
+
 # Default to XROOTD only if on CMT system. Can be overridden with -DAMPGEN_XROOTD=ON
 if(DEFINED ENV{CMTCONFIG})
   set(AMPGEN_XROOTD_DEFAULT ON)
@@ -120,22 +152,45 @@ endif()
 
 target_compile_definitions(AmpGen PRIVATE
   "AMPGENROOT_CMAKE=\"${CMAKE_BINARY_DIR}/bin\""
+  "AMPGENROOT=\"${PROJECT_SOURCE_DIR}\""
   "AMPGEN_CXX=\"${AMPGEN_CXX}\""
   "USE_OPENMP=\"${USE_OPENMP}\""
   $<$<BOOL:${AMPGEN_DEBUG}>:DEBUGLEVEL=1>
   $<$<BOOL:${AMPGEN_TRACE}>:TRACELEVEL=1>)
+
 
 target_compile_options(AmpGen
   INTERFACE
   -Wall -Wextra -Wpedantic -g3
   -Wno-unused-parameter
   -Wno-unknown-pragmas
-  -march=native
-  $<$<CONFIG:Release>:-Ofast>)
+  $<$<CONFIG:Release>:-O3>)
+
+# if( NOT ${USE_SIMD} MATCHES "" ) 
+  if ( ${USE_SIMD} MATCHES "AVX2d" )
+  message(STATUS "Enabling AVX2 [double precision]")
+  target_compile_definitions(AmpGen PUBLIC "ENABLE_AVX=1" "ENABLE_AVX2d=1") 
+  target_compile_options(AmpGen PUBLIC -march=native -ftree-vectorize -mavx2 -ffast-math -DHAVE_AVX2_INSTRUCTIONS)
+  elseif ( ${USE_SIMD} MATCHES "AVX2f" )
+  message(STATUS "Enabling AVX2 [single precision]")
+  target_compile_definitions(AmpGen PUBLIC "ENABLE_AVX=1" "ENABLE_AVX2f=1") 
+  target_compile_options(AmpGen PUBLIC -march=native -ftree-vectorize -mavx2 -ffast-math -DHAVE_AVX2_INSTRUCTIONS)
+  elseif ( ${USE_SIMD} MATCHES "AVX512d" )
+  message(STATUS "Enabling AVX2 [double precision]")
+  target_compile_definitions(AmpGen PUBLIC "ENABLE_AVX=1" "ENABLE_AVX512=1") 
+  target_compile_options(AmpGen PUBLIC -march=native -ftree-vectorize -mavx512f -ffast-math -DHAVE_AVX512_INSTRUCTIONS)
+  endif()
+  if("${CMAKE_CXX_COMPILER_ID}" MATCHES "AppleClang" OR "${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang" )
+   target_compile_options(AmpGen PUBLIC -mfma)
+  endif()
+  # else()
+  #   message("SIMD disabled, resorting to scalar build : ${USE_SIMD}")
+  # endif()
 
 if("${CMAKE_CXX_COMPILER_ID}" MATCHES "AppleClang" )
-  target_link_libraries(AmpGen PUBLIC stdc++)
-  set (CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lm -lstdc++")
+  target_link_libraries(AmpGen PUBLIC stdc++ )
+  message(STATUS "Using OSX specific flags: -lm -lstdc++ -lSystem")
+  set (CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lm -lstdc++ -lSystem")
 elseif ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
   target_link_libraries(AmpGen PUBLIC stdc++)
   set (CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lm -lstdc++")
@@ -143,22 +198,14 @@ else()
   target_compile_options(AmpGen PUBLIC -Wno-suggest-override)
 endif()
 
-file(GLOB_RECURSE applications apps/*.cpp )
-file(GLOB_RECURSE examples examples/*.cpp )
+file(GLOB_RECURSE applications apps/*.cpp examples/*.cpp )
 
 foreach( file ${applications} )
   get_filename_component( Executable ${file} NAME_WE )
   #   cmake_print_variables(Executable)
   add_executable(${Executable} ${file})
   target_compile_options(${Executable} PUBLIC -g3 -Ofast)
-  target_link_libraries(${Executable} PUBLIC AmpGen ${ROOT_LIBRARIES})
-endforeach()
-
-foreach( file ${examples} )
-  get_filename_component( Executable ${file} NAME_WE )
-  # cmake_print_variables(Executable)
-  add_executable(${Executable} ${file})
-  target_link_libraries(${Executable} PUBLIC AmpGen)
+  target_link_libraries(${Executable} PUBLIC AmpGen  )
 endforeach()
 
 file(GLOB_RECURSE options_files options/*.*)
@@ -169,6 +216,8 @@ foreach(file ${options_files})
   execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink "${file}" "${CMAKE_BINARY_DIR}/bin/${OptionFile}")
 endforeach()
 
+enable_testing()
+set(Boost_NO_BOOST_CMAKE ON)
 add_subdirectory(test)
 
 include(CMakePackageConfigHelpers)

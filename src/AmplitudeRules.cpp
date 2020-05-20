@@ -94,11 +94,11 @@ std::vector<Coupling> AmplitudeRules::rulesForDecay(const std::string& head, con
   if(!hasDecay(head)) return std::vector<Coupling>();
   if( prefix == "" )return m_rules[head];
   std::vector<Coupling> rt = m_rules[head];
-  rt.erase( std::remove_if( std::begin(rt), std::end(rt), [&prefix](auto& p){ return p.prefix() != prefix; } ) );
+  rt.erase( std::remove_if( std::begin(rt), std::end(rt), [&prefix](auto& p){ return p.prefix() != prefix; } ), rt.end() );
   return rt;
 }
 
-std::map<std::string, std::vector<Coupling>> AmplitudeRules::rules() 
+const std::map<std::string, std::vector<Coupling>>& AmplitudeRules::rules() const
 { 
   return m_rules;
 }
@@ -125,7 +125,7 @@ std::complex<double> Coupling::operator()() const
 
 Expression Coupling::to_expression() const 
 {
-  return m_expr != nullptr ? m_expr->expression() : ( m_isCartesian ? Parameter(m_re->name()) + 1i * Parameter(m_im->name()) : Parameter( m_re->name() ) * fcn::exp( 1i * m_sf * Parameter(m_im->name()) ) );
+  return m_expr != nullptr ? m_expr->expression() : ( m_isCartesian ? ComplexParameter(Parameter(m_re->name()), Parameter(m_im->name())) : Parameter( m_re->name() ) * fcn::exp( 1i * m_sf * Parameter(m_im->name()) ) );
 }
 
 std::complex<double> TotalCoupling::operator()() const

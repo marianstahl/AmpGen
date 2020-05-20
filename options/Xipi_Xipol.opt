@@ -1,19 +1,21 @@
 ### For testing helicity angle distributions. Using Xic0 -> Xi pi here, since Lc -> Xi K pi introduces additional complications (presumably lead to more terms in differential decay rates like (3) of https://arxiv.org/pdf/hep-ex/0011073.pdf). With Xi pi we can see that the slope of the Lambda helicity angle distribution goes like alpha_Lambda*alpha_Xi, and alpha_Xi*alpha_Xic in the Xi helicity angle
 
 
-EventType                           Xi(c)0 pi+ pi- Lambda0
+EventType                           Xi(c)0 pi+ pi- p+ piL
+#EventType                           Xi(c)0 pi+ pi- Lambda0
 # do this so that AmpGen doesn't symmetrize the pi-s from Lambda and Xi decay
 ParticlePropertiesList::Alias       pi- piL
 Type                                PolarisedSum
-#Type                                TreePhaseSpace
+PhaseSpace                          RecursivePhaseSpace
 EventType::AlternativeParticleNames 1
 Particle::SpinFormalism             Canonical
+#Particle::SpinFormalism             Covariant
 Minimiser::Tolerance                1
 Minimiser::RunMinos                 false
-DataSample                          "$RF/test_Xi_polarization.root:DalitzEventList"
+DataSample                          "$RF/debug/Xipi.root:DalitzEventList"
 Branches                            pip_Px pip_Py pip_Pz pip_E pim_Px pim_Py pim_Pz pim_E pp_Px pp_Py pp_Pz pp_E piL_Px piL_Py piL_Pz piL_E
 nCores                              48
-#RandomizeStartingPoint              1
+RandomizeStartingPoint              1
 
 zero 2 0 0
 one  2 1 0
@@ -23,17 +25,17 @@ Pz = zero
 
 Xi(c)0{pi+,Xi-}_Re = one
 Xi(c)0{pi+,Xi-}_Im = zero
-Xi(c)0[None;P]{pi+,Xi-}_Re  2 -0.31287 0.29066
-Xi(c)0[None;P]{pi+,Xi-}_Im  2 0.077676 0.077733
+Xi(c)0[None;P]{pi+,Xi-}_Re  0 -0.31287 0.29066
+Xi(c)0[None;P]{pi+,Xi-}_Im  0 0.077676 0.077733
 
 # Xi and Lambda S and P waves. From PDG, using Tim's script to extract couplings from alpha and phi
 Xi-{pi-,Lambda0}_Re = one
 Xi-{pi-,Lambda0}_Im = zero
 #stepsize 1/100th of a sigma, min/max +-5 sigma, see https://github.com/GooFit/AmpGen/blob/e01cef7fa3585421441c3657af6bb659fc4d4987/src/MinuitParameterSet.cpp#L127
-Xi-[None;P]{pi-,Lambda0}_Re  2 -0.21319 0.00005 -0.2362   -0.19018  ## using alpha_Lambda below
-Xi-[None;P]{pi-,Lambda0}_Im  2 -0.018   0.00007 -0.044151  0.0225115
+Xi-[None;P]{pi-,Lambda0}_Re  0 -0.21319 0.005 #-0.2362   -0.19018  ## using alpha_Lambda below
+Xi-[None;P]{pi-,Lambda0}_Im  0 -0.018   0.007 #-0.044151  0.0225115
 
-# Lambda0{p+,piL}_Re = one
-# Lambda0{p+,piL}_Im = zero
-# Lambda0[None;P]{p+,piL}_Re  2  0.42616   0.00007  0.39116   0.46116 ## using 0.721+-0.0078 over the BES result, see https://arxiv.org/pdf/1904.07616.pdf
-# Lambda0[None;P]{p+,piL}_Im  2 -0.021386  0.00025 -0.146386  0.103614
+Lambda0{p+,piL}_Re = one
+Lambda0{p+,piL}_Im = zero
+Lambda0[None;P]{p+,piL}_Re  0  0.42616   0.007 # 0.39116   0.46116 ## using 0.721+-0.0078 over the BES result, see https://arxiv.org/pdf/1904.07616.pdf
+Lambda0[None;P]{p+,piL}_Im  0 -0.021386  0.025 #-0.146386  0.103614

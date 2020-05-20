@@ -194,9 +194,9 @@ Tensor Particle::P() const
       Tensor rt( std::vector<Expression>( {
             Parameter(index + "_Px"), 
             Parameter(index + "_Py"),
-            Parameter(index + "_Pz"), 0 }) , Tensor::dim(4) );
-      rt[3] = make_cse( fcn::sqrt( mass()*mass() + rt[0]*rt[0] + rt[1]*rt[1] + rt[2]*rt[2] ) );
-         //   Parameter( index + "_E" , 0, false, 1 )} ),
+            Parameter(index + "_Pz"), 
+            Parameter(index + "_E") }) , Tensor::dim(4) );
+//      rt[3] = fcn::sqrt( mass()*mass() + rt[0]*rt[0] + rt[1]*rt[1] + rt[2]*rt[2] ) ;
       return rt;
     } else ERROR( "Stable particle " << m_index << "is unindexed!" );
   } 
@@ -372,8 +372,9 @@ Tensor Particle::transitionMatrix( DebugSymbols* db  )
   return spinTensor();
 }
 
-Expression Particle::getExpression( DebugSymbols* db, const unsigned int& index )
+Expression Particle::getExpression( DebugSymbols* db, const std::vector<int>& state)
 {
+  if( state.size() !=0 ) setPolarisationState( state );
   if( db != nullptr && !isStable() ) 
     db->emplace_back( uniqueString() , Parameter( "NULL", 0, true ) );
   Expression total = 0;
@@ -431,7 +432,14 @@ Expression Particle::getExpression( DebugSymbols* db, const unsigned int& index 
   }
   ADD_DEBUG( total, db );
   double nPermutations = doSymmetrisation ? orderings.size() : 1;
-  if ( sumAmplitudes ) return total / fcn::sqrt( nPermutations );
+  if ( sumAmplitudes )
+  {
+    if ( is<Constant>(total) ){
+      WARNING("Amplitude is just a constant: " << total << " may cause problems for compiler, making a little bit complex" );
+      total += 1i * 0.00001;
+    }
+    return total / fcn::sqrt( nPermutations );
+  }
   else {
     Expression sqrted = fcn::sqrt( total / nPermutations );
     ADD_DEBUG( sqrted, db );

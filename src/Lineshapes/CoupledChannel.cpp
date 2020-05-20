@@ -13,6 +13,8 @@ using namespace AmpGen;
 using namespace AmpGen::fcn; 
 using namespace std::complex_literals; 
 
+// ENABLE_DEBUG( Lineshape::CoupledChannel );
+
 Expression H(const Expression& x, 
              const Expression& y, 
              const Expression& z )
@@ -75,11 +77,11 @@ Expression AmpGen::phaseSpace(const Expression& s, const Particle& p, const size
       const Expression radius       = Parameter(p.name()  + "_radius", p.props()->radius());
       return rho_twoBody(s, s1, s2) * BlattWeisskopf(k2p*radius*radius, l);
     }
-    if( phsp_parameterisation == std::string("arXiv.0707.3596") ){
+    else if( phsp_parameterisation == std::string("arXiv.0707.3596") ){
       INFO("Got AS parametrisation");
       return 2 * complex_sqrt(k2/s);
     }
-    if( phsp_parameterisation == std::string("CM") )
+    else if( phsp_parameterisation == std::string("CM") )
     {
       if( l != 0 ){
         WARNING("Chew-Mandelstam only implemented for l=0");
@@ -93,6 +95,9 @@ Expression AmpGen::phaseSpace(const Expression& s, const Particle& p, const size
       auto q   = fcn::complex_sqrt(q2);
       auto arg = (s1 + s2 - s + 2*fcn::sqrt(s) * q )/ (2*m1*m2);
       return (2.*q * fcn::log(arg) / fcn::sqrt(s) - (s1-s2)*( 1./s - 1./sT ) * fcn::log(m1/m2) ) / ( 16.i * M_PI * M_PI ); 
+    }
+    else {
+      FATAL("Parametrisation: " << *phsp_parameterisation << " not found");
     }
   }
   if( fs.size() == 3 && ! p.daughter(0)->isStable() ) return rho_threeBody( s, *p.daughter(0), *p.daughter(1) );

@@ -258,7 +258,7 @@ namespace AmpGen
       Expression propagator( DebugSymbols* db = nullptr ) const;
 
       /// Calculates the total expression for this particle, including symmetrisation and the current polarisation state
-      Expression getExpression( DebugSymbols* db = nullptr, const unsigned int& index = 0 );
+      Expression getExpression( DebugSymbols* db = nullptr, const std::vector<int>& = {} );
 
       /// Calculate the transition matrix for this decay 
       Tensor transitionMatrix( DebugSymbols* db = nullptr );
@@ -276,6 +276,7 @@ namespace AmpGen
       /// matches Check the matching between two decay chains, according to the MatchState enum. 
       unsigned int matches( const Particle& other ) const; 
       std::string makeUniqueString();                        ///< Generate the decay descriptor for this decay. 
+      
     private:
       std::string m_name                     = {""};         ///< Name of the particle
       const ParticleProperties* m_props      = {nullptr};    ///< Particle Properties from the PDG
