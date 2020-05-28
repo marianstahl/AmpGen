@@ -94,7 +94,7 @@ FitResult* doFit( PDF&& pdf, EventList& data, EventList& mc, MinuitParameterSet&
   auto time      = std::clock();
 
   pdf.setEvents( data );
-  for_each( pdf.pdfs(), [](auto& f ){ f.prepare(); } );
+  //for_each( pdf.pdfs(), [](auto& f ){ f.prepare(); } );
 
   /* Minimiser is a general interface to Minuit1/Minuit2,
      that is constructed from an object that defines an operator() that returns a double
@@ -208,13 +208,15 @@ int main( int argc, char* argv[] )
      The transformation also includes boosting to the restframe of the head of the decay chain.
      TODO: There might be situations where you want to separate both transformations */
   if(!idbranch.empty()){
-    auto frame_transform = [](auto& event){
+    auto frame_transform = [&evtType](auto& event){
       TVector3 pBeam(0,0,1);
       if( event[event.size()-1] < 0 ){
         invertParity( event, 3);
         pBeam = -pBeam;
       }
-      TLorentzVector pP = pFromEvent(event,{0,1,2});
+      std::vector<unsigned> daughters_as_ints(evtType.size());
+      std::iota (daughters_as_ints.begin(), daughters_as_ints.end(), 0u);
+      TLorentzVector pP = pFromEvent(event,daughters_as_ints);
       //if( pP.P() < 10e-5) return;
       TVector3 pZ = pP.Vect();
       rotateBasis( event, (pBeam.Cross(pZ) ).Cross(pZ), pBeam.Cross(pZ), pZ );
