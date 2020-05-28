@@ -34,10 +34,10 @@ EventList::EventList( const EventType& type ) : m_eventType( type ) {}
 
 void EventList::loadFromFile( const std::string& fname, const ArgumentPack& args )
 {
-  auto current_file = gFile; 
-  auto tokens = split( fname, ':'); 
+  auto current_file = gFile;
+  auto tokens = split( fname, ':');
   TTree* tree = nullptr;
-  if( fname == "" ) FATAL("Filename must be specified to load data"); 
+  if( fname == "" ) FATAL("Filename must be specified to load data");
   if( tokens.size() == 2 ){
     gFile = TFile::Open( tokens[0].c_str(), "READ"); 
     if( gFile == nullptr ) FATAL("Failed to load file: " << tokens[0] );

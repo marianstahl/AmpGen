@@ -19,24 +19,24 @@ namespace AmpGen
   /** @class SumPDF
       @brief A pdf that contains one or more terms.
 
-      A pdf with a probability of the form 
+      A pdf with a probability of the form
       @f[
         P(\psi) = \sum_{j} \mathcal{P}_j (\psi),
-      @f] 
-      where @f$ \mathcal{P}_j(\psi) @f$ are some normalised probability density functions 
-      as a function of position in the phase space @f$ \psi @f$ 
-      , and the sum is over the different terms, typically a signal term and then a number of background terms. 
+      @f]
+      where @f$ \mathcal{P}_j(\psi) @f$ are some normalised probability density functions
+      as a function of position in the phase space @f$ \psi @f$
+      , and the sum is over the different terms, typically a signal term and then a number of background terms.
       The pdf is also equipped with a log-likelihood of the form:
-      @f[ 
+      @f[
         -2 \mathcal{L} = - 2 \sum_{i} \log \left( \sum_{j} \mathcal{P}_j \left(\psi_i\right) \right)
       @f]
-      and the sum over @f$ i @f$ is over some dataset. 
-      This combined functionality is largely historical and the two roles should be separated at some point in the future. 
+      and the sum over @f$ i @f$ is over some dataset.
+      This combined functionality is largely historical and the two roles should be separated at some point in the future.
       The sum is variadically unrolled at compile time, i.e. the wrapper
       is the same for 1..N pdfs. The unrolling should be properly inlined,
       hence N can be reasonably large with out afflicting either
-      compile time or binary size. It isn't primarily used as PDF, as its primary function is 
-      as a likelihood via function getVal(). 
+      compile time or binary size. It isn't primarily used as PDF, as its primary function is
+      as a likelihood via function getVal().
       Typically constructed using either the make_pdf helper function or make_likelihood helper function.  */
   template <class eventListType, class... pdfTypes>
   class SumPDF
@@ -48,7 +48,7 @@ namespace AmpGen
 
   public:
     /// Default Constructor
-    SumPDF() = default; 
+    SumPDF() = default;
 
     /// Constructor from a set of PDF functions
     SumPDF( const pdfTypes&... pdfs ) : m_pdfs( std::tuple<pdfTypes...>( pdfs... ) ) {}
@@ -64,7 +64,8 @@ namespace AmpGen
         #pragma omp parallel for reduction( +: LL )
         for ( unsigned int i = 0; i < m_events->size(); ++i ) {
           auto prob = ((*this))(( *m_events)[i] );
-          LL += log(prob);
+	  auto w = (*m_events)[i].weight();
+          LL += w*log(prob);
         }
         return -2 * LL;
       }

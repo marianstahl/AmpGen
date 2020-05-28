@@ -1,0 +1,31 @@
+### For testing helicity angle distributions
+
+EventType                           Xi- pi- p+ piL
+# do this so that AmpGen doesn't symmetrize the pi-s from Lambda and Xi decay
+ParticlePropertiesList::Alias       pi- piL
+Type                                PolarisedSum #TreePhaseSpace
+EventType::AlternativeParticleNames 1
+Particle::SpinFormalism             Canonical
+Minimiser::Tolerance                1
+Minimiser::RunMinos                 false
+DataSample                          "$RF/debug/Lpi_gen_Xipolz.root:DalitzEventList"
+Branches                            pim_Px pim_Py pim_Pz pim_E pp_Px pp_Py pp_Pz pp_E piL_Px piL_Py piL_Pz piL_E
+nCores                              48
+
+zero 2 0 0
+one  2 1 0
+Px = zero
+Py = zero
+Pz = one  # set this to one to measure alpha_Xi directly in the Xi helicity angle
+
+# Xi and Lambda S and P waves. From PDG, using Tim's script to extract couplings from alpha and phi
+Xi-{Lambda0,pi-}_Re = one
+Xi-{Lambda0,pi-}_Im = zero
+#stepsize 1 sigma, min/max +-5 sigma, see https://github.com/GooFit/AmpGen/blob/e01cef7fa3585421441c3657af6bb659fc4d4987/src/MinuitParameterSet.cpp#L127
+Xi-[None;P]{pi-,Lambda0}_Re  0 -0.21319 0.005  #-0.2362   -0.19018  ## using alpha_Lambda below
+Xi-[None;P]{pi-,Lambda0}_Im  0 -0.018   0.007  #-0.044151  0.0225115
+
+Lambda0{p+,piL}_Re = one
+Lambda0{p+,piL}_Im = zero
+Lambda0[None;P]{p+,piL}_Re  0  0.42616   0.007   # 0.39116   0.46116 ## using 0.721+-0.0078 over the BES result, see https://arxiv.org/pdf/1904.07616.pdf
+Lambda0[None;P]{p+,piL}_Im  0 -0.021386  0.025   #-0.146386  0.103614

@@ -81,7 +81,9 @@ namespace AmpGen
     unsigned m_printLevel = {0};
     double   m_ll_zero    = {0};
     bool     m_normalise  = {false};
+    std::vector<int> m_minosParams;
     std::vector<IExtendLikelihood*> m_extendedTerms;
+    void print_parameters_and_covariance() const;
   };
 } // namespace AmpGen
 #endif
