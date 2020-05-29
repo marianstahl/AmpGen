@@ -7,12 +7,19 @@
 #include <tuple>
 #include <utility>
 #include <vector>
-#include "THStack.h"
-#include "TCanvas.h"
+#include <THStack.h>
+#include <TCanvas.h>
+#include <TFile.h>
 
 #include "AmpGen/Chi2Estimator.h"
 #include "AmpGen/ErrorPropagator.h"
-#include "AmpGen/EventList.h"
+#if ENABLE_AVX
+  #include "AmpGen/EventListSIMD.h"
+  using EventList_type = AmpGen::EventListSIMD;
+#else
+  #include "AmpGen/EventList.h"
+  using EventList_type = AmpGen::EventList;
+#endif
 #include "AmpGen/EventType.h"
 #include "AmpGen/Factory.h"
 #include "AmpGen/RecursivePhaseSpace.h"
@@ -28,7 +35,6 @@
 #include "AmpGen/Utilities.h"
 #include "AmpGen/Generator.h"
 #include "AmpGen/PolarisedSum.h"
-#include "AmpGen/Plots.h"
 #include "AmpGen/Kinematics.h"
 
 #ifdef _OPENMP
@@ -61,17 +67,6 @@ double decayAngle2( const Event& evt)
   return 180 * di.Angle(qA) / M_PI;
 }
 
-/*
-unsigned int count_amplitudes( const AmpGen::MinuitParameterSet& mps )
-{
-  unsigned int counter = 0;
-  for ( auto param = mps.cbegin(); param != mps.cend(); ++param ) {
-    if ( ( *param )->name().find( "_Re" ) != std::string::npos ) counter++;
-  }
-  return counter;
-}
-*/
-
 void randomizeStartingPoint( MinuitParameterSet& mps, TRandom3& rand)
 {
   for (auto& param : mps) {
@@ -88,7 +83,7 @@ void randomizeStartingPoint( MinuitParameterSet& mps, TRandom3& rand)
 }
 
 template <typename PDF>
-FitResult* doFit( PDF&& pdf, EventList& data, EventList& mc, MinuitParameterSet& MPS )
+FitResult* doFit( PDF&& pdf, EventList_type& data, EventList_type& mc, MinuitParameterSet& MPS )
 {
   auto time_wall = std::chrono::high_resolution_clock::now();
   auto time      = std::clock();
@@ -103,27 +98,13 @@ FitResult* doFit( PDF&& pdf, EventList& data, EventList& mc, MinuitParameterSet&
   mini.doFit();
   FitResult* fr = new FitResult(mini);
 
-  /* Make the plots for the different components in the PDF, i.e. the signal and backgrounds.
-     The structure assumed the PDF is some SumPDF<T1,T2,...>. */
-  unsigned int counter = 1;
-  for_each(pdf.pdfs(), [&]( auto& f ){
-    auto mc_plot3 = mc.makeDefaultProjections(WeightFunction(f), Prefix("Model_cat"+std::to_string(counter)));
-    for( auto& plot : mc_plot3 )
-    {
-      plot->Scale( ( data.integral() * f.getWeight() ) / plot->Integral() );
-      plot->Write();
-    }
-    mc.transform([&f](auto& mcevt){mcevt.setWeight(f.prob(mcevt)*mcevt.weight()/mcevt.genPdf());}).tree(counter>1?"MCt"+std::to_string(counter):"MCt")->Write();
-    data.tree(counter>1?"t"+std::to_string(counter):"t")->Write();
-    counter++;
-  } );
   /* Estimate the chi2 using an adaptive / decision tree based binning,
      down to a minimum bin population of 15, and add it to the output.*/
-  if(data.eventType().size() < 5){
-    Chi2Estimator chi2( data, mc, pdf, 15 );
-    //chi2.writeBinningToFile("chi2_binning.txt");
-    fr->addChi2( chi2.chi2(), chi2.nBins() );
-  }
+  //if(data.eventType().size() < 5){
+  //  Chi2Estimator chi2( data, mc, pdf, 15 );
+  //  //chi2.writeBinningToFile("chi2_binning.txt");
+  //  fr->addChi2( chi2.chi2(), chi2.nBins() );
+  //}
 
   auto twall_end  = std::chrono::high_resolution_clock::now();
   double time_cpu = ( std::clock() - time ) / (double)CLOCKS_PER_SEC;
@@ -131,6 +112,34 @@ FitResult* doFit( PDF&& pdf, EventList& data, EventList& mc, MinuitParameterSet&
   INFO( "Wall time = " << tWall / 1000. );
   INFO( "CPU  time = " << time_cpu );
   fr->print();
+
+  /* Save weighted data and norm MC for the different components in the PDF, i.e. the signal and backgrounds.
+     The structure assumed the PDF is some SumPDF<T1,T2,...>. */
+  unsigned int counter = 1;
+  for_each(pdf.pdfs(), [&]( auto& f ){
+    mc.transform([&f](auto& mcevt){mcevt.setWeight(f.getValNoCache(mcevt)*mcevt.weight()/mcevt.genPdf());}).tree(counter>1?"MCt"+std::to_string(counter):"MCt")->Write();
+    data.tree(counter>1?"t"+std::to_string(counter):"t")->Write();
+    counter++;
+  } );
+
+  auto evaluator     = pdf.componentEvaluator(&mc);
+  auto projections   = data.eventType().defaultProjections(100);
+  projections.emplace_back( decayAngle0, "angle0", "\\theta_{z}"       ,100,0,180.   , "^{\\mathrm{o}}");
+  projections.emplace_back( decayAngle1, "angle1", "\\phi_{x}"         ,100,-180,180 , "^{\\mathrm{o}}");
+  projections.emplace_back( decayAngle2, "angle2", "\\phi_{h^{+}h^{-}}",100,0,180    , "^{\\mathrm{o}}");
+  projections.emplace_back( HelicityCosine({0},{1},{1,2}), "hCos1", "\\cos\\left(\\theta\\right)",100,-1.,1);
+  projections.emplace_back( HelicityCosine({0},{2},{0,1}), "hCos2", "\\cos\\left(\\theta^{\\prime}\\right)",100,-1.,1);
+
+  /* Write out the data plots. This also shows the first example of the named arguments
+     to functions, emulating python's behaviour in this area */
+  auto evaluator_per_component = std::get<0>( pdf.pdfs() ).componentEvaluator();
+  for( const auto& proj : projections )
+  {
+    proj(mc, evaluator,                                           PlotOptions::Norm(data.size()), PlotOptions::AutoWrite() );
+    proj(mc, evaluator_per_component, PlotOptions::Prefix("amp"), PlotOptions::Norm(data.size()), PlotOptions::AutoWrite() );
+    proj(data, PlotOptions::Prefix("Data") )->Write();
+  }
+
   return fr;
 }
 
@@ -151,7 +160,7 @@ int main( int argc, char* argv[] )
   OptionsParser::setArgs( argc, argv );
 
   const std::vector<std::string> dataFile = NamedParameter<std::string>("DataSample","").getVector();
-  const std::string mcFile                = NamedParameter<std::string>("SgIntegratorFname","");
+  const std::string simFile               = NamedParameter<std::string>("SgIntegratorFname", ""   , "Name of file containing simulated sample for using in MC integration");
   const std::string logFile               = NamedParameter<std::string>("LogFile","Fitter.log");
   const std::string plotFile              = NamedParameter<std::string>("Plots","plots.root");
   const std::string prefix                = NamedParameter<std::string>("PlotPrefix","");
@@ -177,7 +186,7 @@ int main( int argc, char* argv[] )
      the parsed options. For historical reasons, this is referred to as loading it from a "Stream" */
   MinuitParameterSet MPS;
   MPS.loadFromStream();
-  TRandom3 rndm = TRandom3( NamedParameter<unsigned int>("Seed", 0 ) ) ;
+  TRandom3 rndm = TRandom3( NamedParameter<unsigned int>("Seed", 1 ) ) ;
   if( NamedParameter<bool>("RandomizeStartingPoint",false) ) randomizeStartingPoint(MPS,rndm );
 
   /* An EventType specifies the initial and final state particles as a vector that will be described by the fit.
@@ -197,12 +206,13 @@ int main( int argc, char* argv[] )
   EventType evtType_primed = evtType;
   if(!idbranch.empty())
     evtType_primed.extendEventType(idbranch);
-  EventList events(dataFile, evtType_primed, Branches(bNames), GetGenPdf(false), WeightBranch(weight_branch) );
+  EventList_type events(dataFile, evtType_primed, Branches(bNames), GetGenPdf(false), WeightBranch(weight_branch) );
 
   /* Generate events to normalise the PDF with. This can also be loaded from a file,
      which will be the case when efficiency variations are included. */
-  EventList eventsMC = Generator<RecursivePhaseSpace>(sig.matrixElements()[0].decayTree.quasiStableTree(), evtType, &rndm).generate(nev_MC);
-  //EventList eventsMC = Generator<>(evtType, &rndm).generate(nev_MC);
+  EventList_type eventsMC = simFile == ""
+   ? EventList_type(Generator<RecursivePhaseSpace, EventList>(sig.matrixElements()[0].decayTree.quasiStableTree(), events.eventType(), &rndm).generate(nev_MC))
+   : EventList_type(simFile, events.eventType());
 
   /* Transform data if we have an ID brach. That branch indicates that we operate on a sample with particles+antiparticles mixed.
      The transformation also includes boosting to the restframe of the head of the decay chain.
@@ -240,52 +250,11 @@ int main( int argc, char* argv[] )
 
   TFile* output = TFile::Open( plotFile.c_str(), "RECREATE" );
   output->cd();
-  auto fr = doFit(make_pdf(sig), events, eventsMC, MPS);
+  auto fr = doFit(make_pdf<EventList_type>(sig), events, eventsMC, MPS);
 
   auto ff = sig.fitFractions( fr->getErrorPropagator() );
   fr->addFractions(ff);
   fr->writeToFile( logFile );
-  output->cd();
-
-  std::vector<Projection> projections = evtType.defaultProjections(100);
-  projections.emplace_back( decayAngle0, "angle0", "\\theta_{z}"       ,100,0,180.   , "^{\\mathrm{o}}");
-  projections.emplace_back( decayAngle1, "angle1", "\\phi_{x}"         ,100,-180,180 , "^{\\mathrm{o}}");
-  projections.emplace_back( decayAngle2, "angle2", "\\phi_{h^{+}h^{-}}",100,0,180    , "^{\\mathrm{o}}");
-  projections.emplace_back( HelicityCosine({0},{1},{1,2}), "hCos1", "\\cos\\left(\\theta\\right)",100,-1.,1);
-  projections.emplace_back( HelicityCosine({0},{2},{0,1}), "hCos2", "\\cos\\left(\\theta^{\\prime}\\right)",100,-1.,1);
-  auto data_plots = events.makeProjections( projections );
-  std::function<double(const Event&)> FCN_sig = [&](const Event& evt){ return sig.prob_unnormalised(evt) ; };
-  //std::function<double(const Event&)> FCN_bkg = [&](const Event& evt){ return bkg.prob_unnormalised(evt) ; };
-  auto sig_plots      = eventsMC.makeProjections(projections, WeightFunction(FCN_sig), Prefix("MC_sig"));
-  //auto bkg_plots      = eventsMC.makeProjections(projections, WeightFunction(FCN_bkg), Prefix("MC_bkg"));
-  auto plots_noWeight = eventsMC.makeProjections(projections, Prefix("MC_noweight") );
-
-  for ( unsigned int i = 0 ; i < data_plots.size() ; ++i )
-  {
-    //std::string figureName = prefix + std::string( data_plots[i]->GetName() ) + ".pdf";
-    //INFO("Writing plot → " << figureName);
-    auto& plot = data_plots[i];
-    auto&   mc = sig_plots[i];
-    //auto&  bkg = bkg_plots[i];
-    mc->Scale( plot->Integral() / mc->Integral() );
-    //bkg->Scale( MPS["fBkg"]->mean() * plot->Integral() / bkg->Integral() );
-    plot->Draw("E");
-    THStack* hs = new THStack();
-    //if(hasBackground) hs->Add( bkg, "C HIST");
-    hs->Add( mc, "C HIST");
-    mc->SetLineColor(658);
-    //bkg->SetFillColorAlpha(ANAGreen,0.5);
-    //bkg->SetLineColor(ANAGreen+1);
-    hs->Draw("same");
-    hs->SetMinimum(0);
-    plot->Draw("E same");
-    gPad->RedrawAxis();
-    //LatexViewer().view( (TCanvas*)gPad, figureName);
-    plot->Write();
-    mc->Write();
-    //bkg->Write();
-    plots_noWeight[i]->Write();
-  }
   output->Close();
   return 0;
 }
