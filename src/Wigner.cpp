@@ -209,6 +209,10 @@ std::vector<LS> userHelicityCouplings( const std::string& key ){
     coupling.m2     = things[i+2];
     couplings.push_back(coupling);
   }
+  if( couplings.size() == 0 )
+  {
+    FATAL("No helicity amplitude specified by: " << key );
+  }
   return couplings;
 }
 
@@ -228,7 +232,10 @@ Expression AmpGen::helicityAmplitude(const Particle& particle,
                                      TransformCache* cachePtr )
 {  
   if( cachePtr == nullptr ) cachePtr = new TransformCache();
-  if( particle.daughters().size() > 2 ) return 1; 
+  if( particle.daughters().size() > 2 ) {
+    WARNING( particle << " has more than two decay products: helicity amplitude is ill-defined - setting spin matrix element to 1" );
+    return 1; 
+  } 
   if( particle.daughters().size() == 1 ) 
     return helicityAmplitude( *particle.daughter(0), parentFrame, Mz, db, sgn, cachePtr);
   Tensor::Index a,b,c; 
@@ -245,7 +252,6 @@ Expression AmpGen::helicityAmplitude(const Particle& particle,
     else (*cachePtr)[key] = TransformSequence();
   }
   const TransformSequence& myFrame = (*cachePtr)[key];
-
 
   if( particle.isStable() )
   {
@@ -284,7 +290,13 @@ Expression AmpGen::helicityAmplitude(const Particle& particle,
   else S = particle.S()/2.;
   auto recoupling_constants = calculate_recoupling_constants( particle.spin(), Mz, L, S, d1.spin(), d2.spin() );
   auto mod = particle.attribute("helAmp");
-  if( mod != stdx::nullopt ) recoupling_constants = userHelicityCouplings( *mod );
+  if( mod != stdx::nullopt ){
+    if( particle.props()->twoSpin() != 0 )
+    {
+      WARNING("User helicity couplings only implemented for scalar initial states, using: " << *mod << " will result in unexpected behaviour.");
+    }
+    recoupling_constants = userHelicityCouplings( *mod );
+  }
 
   if( recoupling_constants.size() == 0 ){    
     WARNING( particle.uniqueString() << " " << particle.spin() << " " << 
