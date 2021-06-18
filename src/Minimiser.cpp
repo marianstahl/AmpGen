@@ -8,7 +8,7 @@
 #include <iomanip>
 #include <Minuit2/Minuit2Minimizer.h>
 
-#include "AmpGen/IExtendLikelihood.h"
+#include "AmpGen/ExtendLikelihoodBase.h"
 #include "AmpGen/MinuitParameter.h"
 #include "AmpGen/MinuitParameterSet.h"
 #include "AmpGen/MsgService.h"
@@ -31,7 +31,7 @@ double Minimiser::operator()( const double* xx )
     m_parSet->at( m_mapping[i] )->setCurrentFitVal( xx[i] );
   }
   double LL = m_theFunction() ;
-  for ( auto& extendTerm : m_extendedTerms ) LL -= 2 * extendTerm->getVal();
+  for ( auto& extendTerm : m_extendedTerms ) LL -= 2 * (*extendTerm)();
   callTime.stop();
   return LL - m_ll_zero;
 }
@@ -60,7 +60,7 @@ void Minimiser::prepare()
 {
   std::string algorithm = NamedParameter<std::string>( "Minimiser::Algorithm", "Hesse");
   size_t maxCalls       = NamedParameter<size_t>( "Minimiser::MaxCalls"  , 100000);
-  double tolerance      = NamedParameter<double>( "Minimiser::Tolerance" , 1.0);
+  double tolerance      = NamedParameter<double>( "Minimiser::Tolerance" , 0.1);
   m_printLevel          = NamedParameter<size_t>( "Minimiser::PrintLevel", 4);
   m_normalise           = NamedParameter<bool>(   "Minimiser::Normalise",false);
   if ( m_minimiser != nullptr ) delete m_minimiser;
@@ -167,7 +167,7 @@ TMatrixTSym<double> Minimiser::covMatrixFull() const
 
 MinuitParameterSet* Minimiser::parSet() const { return m_parSet; }
 
-void Minimiser::addExtendedTerm( IExtendLikelihood* m_term )
+void Minimiser::addExtendedTerm( ExtendLikelihoodBase* m_term )
 {
   m_extendedTerms.push_back( m_term );
 }

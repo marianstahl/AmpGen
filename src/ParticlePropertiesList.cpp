@@ -52,17 +52,15 @@ const std::vector<std::string> ParticlePropertiesList::dirList() const
   if ( nullptr != AmpEnv ) {
     AmpGenRoot = AmpEnv;
   } else {
-#ifdef AMPGENROOT_CMAKE
-    AmpGenRoot = AMPGENROOT_CMAKE;
+#ifdef AMPGENROOT
+    AmpGenRoot = AMPGENROOT;
     INFO( "Using built-in AMPGENROOT (set env variable if incorrect): " << AmpGenRoot );
 #else
     WARNING( "AMPGENROOT not set, may not be able to find pdg database" );
 #endif
   }
-  dirList.push_back( "" );
   dirList.push_back( AmpGenRoot + "/" );
   dirList.push_back( AmpGenRoot + "/options/" );
-  dirList.push_back( "../" );
   return dirList;
 }
 
@@ -70,9 +68,9 @@ ParticlePropertiesList::ParticlePropertiesList( const std::string& fname_in )
 {
   auto dl = dirList();
   bool status = true; 
-  status &= std::any_of( dl.begin(), dl.end(), [this](auto& d){ return this->readLatexLabels(d +"pdgID_to_latex.dat") ; } );
-  status &= std::any_of( dl.begin(), dl.end(), [this](auto& d){ return this->readFile(d +"mass_width.csv") ; } );
-  status &= std::any_of( dl.begin(), dl.end(), [this](auto& d){ return this->readFile(d +"MintDalitzSpecialParticles.csv") ; } );
+  status &= std::any_of( dl.begin(), dl.end(), [this](const auto& d){ return this->readLatexLabels(d +"pdgID_to_latex.dat") ; } );
+  status &= std::any_of( dl.begin(), dl.end(), [this](const auto& d){ return this->readFile(d +"mass_width.csv") ; } );
+  status &= std::any_of( dl.begin(), dl.end(), [this](const auto& d){ return this->readFile(d +"MintDalitzSpecialParticles.csv") ; } );
   if( !status ){
     WARNING("Failed to load full PDG configuration, beware of unexpected behaviour");
   }

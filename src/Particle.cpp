@@ -126,7 +126,12 @@ bool Particle::isValidDecayDescriptor( const std::string& decayDescriptor )
 
 void Particle::parseModifier( const std::string& mod )
 {
-  if ( Lineshape::Factory::isLineshape(mod) ) m_lineshape = mod;
+  auto tokens = split(mod, '=');
+  if ( tokens.size() == 2 && tokens[0] == "vertex" )
+  {
+    m_vertexName = tokens[1];
+  }
+  else if ( Lineshape::Factory::isLineshape(mod) ) m_lineshape = mod;
   else if( mod.size() == 1 )
   {
     DEBUG( "Modifier = " << mod );
@@ -155,6 +160,7 @@ void Particle::parseModifier( const std::string& mod )
 
 double Particle::spin() const { return double( m_props->twoSpin() / 2. ) ; }
 double Particle::S() const { return m_spinConfigurationNumber ; }
+
 
 void Particle::pdgLookup()
 {
@@ -246,6 +252,7 @@ std::shared_ptr<Particle> Particle::daughter( const std::string& name, const int
 
 std::string Particle::orbitalString() const
 {
+  if( m_vertexName != "" ) return m_vertexName; 
   constexpr std::array<char, 7> orbitals = {'S','P','D','F','G','H','I'};
   std::string rt = std::string(1, orbitals[m_orbital] );
   if( m_spinConfigurationNumber != 0 ){
@@ -466,9 +473,9 @@ Tensor Particle::spinTensor( DebugSymbols* db ) const
   }
   else if ( m_daughters.size() == 2 ) {
     auto vname = m_props->spinName() + "_" + m_daughters[0]->m_props->spinName() + m_daughters[1]->m_props->spinName() + "_" + orbitalString();
-    Tensor value = Vertex::Factory::getSpinFactor( P(), Q(),
-        daughter(0)->spinTensor(db),
-        daughter(1)->spinTensor(db), vname, db );
+    Tensor value = Vertex::Factory::getSpinFactor( P(), Q(), 
+					      daughter(0)->spinTensor(db),
+					      daughter(1)->spinTensor(db), vname, db );
     DEBUG( "Returning spin tensor" );
     return value;
   } else if ( m_daughters.size() == 3 ) {
